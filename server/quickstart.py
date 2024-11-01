@@ -10,6 +10,8 @@ from googleapiclient.errors import HttpError # type: ignore
 from flask_cors import CORS # type: ignore
 from flask import Flask, jsonify, request # type: ignore
 
+from textAnalysis import *
+from dateutil import parser
 
 app = Flask(__name__) # type: ignore
 CORS(app)  # Enable CORS
@@ -17,7 +19,15 @@ CORS(app)  # Enable CORS
 # If modifying these scopes, delete the file token.json.
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 
-def main():
+def get_email_date(headers):
+  for header in headers:
+    if header['name'].lower() == 'date':
+      date_str = header['value']
+      parsed_date = parser.parse(date_str)
+      return parsed_date.strftime("%Y-%m-%d %H:%M:%S")
+  return None
+
+def fetch_company_names():
   creds = None
   # The file token.json stores the user's access and refresh tokens, and is
   # created automatically when the authorization flow completes for the first
@@ -41,22 +51,43 @@ def main():
     results = service.users().messages().list(userId="me", labelIds=["INBOX"], maxResults=10).execute()
     messages = results.get("messages", [])
 
+    company_names = []
+
     # Loop through the messages and obtain the body of the message
     for message in messages:
         msg = service.users().messages().get(userId="me", id=message['id']).execute()
-        for p in msg["payload"]["parts"]:
-          if p["mimeType"] == "text/plain":
-            data = base64.urlsafe_b64decode(p["body"]["data"]).decode("utf-8")
-            print(f"{data}\n") #The body of the message
+        headers = msg.get('payload', {}).get('headers', [])
+        print(headers)
+        # for p in msg["payload"]["parts"]:
+        #   if p["mimeType"] == "text/plain":
+        #     data = base64.urlsafe_b64decode(p["body"]["data"]).decode("utf-8")
+        #     company_name = get_organization_name(data)
+        snippet = msg['snippet']
+        company_name = get_sender_company(snippet)
+        date_sent = get_email_date(headers)
+
+        # if not company_name:
+        #   headers = msg.get('payload', {}).get('headers', [])
+        #   for header in headers:
+        #       if header['name'] == 'From':
+        #         sender_email = header['value']
+        #         company_name = get_sender_company(sender_email)
+        #         break
+
+        if company_name:
+            company_names.append(company_name)
+
+    return company_names
 
   except HttpError as error:
     print(f"An error occurred: {error}")
+    return []
 
 @app.route('/api/companies', methods=['GET'])
 def get_companines():
-  company_names = ["Google", "Amazon", "Netflix"]
+  # company_names = ["Google", "Amazon", "Netflix"]
+  company_names = fetch_company_names()
   return jsonify({"companies": company_names})
 
 if __name__ == "__main__":
-  # main()
   app.run(debug=True)

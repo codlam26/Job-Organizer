@@ -25,7 +25,8 @@ dist-ssr
 
 server/credentials.json
 server/token.json
+server/__pycache__
 
 venv
-
 .env
+
